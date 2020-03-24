@@ -1,0 +1,20 @@
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+
+default:
+  image: archlinux:latest
+  before_script:
+    - pacman -Syu --noconfirm --needed python-pytorch python-tensorflow python-pip python-numpy python-jinja
+    - pacman -S --noconfirm --needed python-pytest python-pytest-dependency python-pytest-xdist python-pytest-env
+    - pacman -S --noconfirm --needed python-ruff mypy
+
+stages:          # List of stages for jobs, and their order of execution
+  - check
+
+check-job:
+  stage: check
+  script:
+    - pip install -e .[tests,pytorch,tensorflow,lint,typecheck]
+    - ruff check . || ((exit_code|=$?))
+    - mypy || ((exit_code|=$?))
+    - $(exit $exit_code)
