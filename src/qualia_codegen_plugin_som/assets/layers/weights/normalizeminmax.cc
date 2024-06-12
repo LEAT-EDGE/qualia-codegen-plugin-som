@@ -9,5 +9,5 @@
 
 #include <stdint.h>
 
-const {{ weights.min.dtype }} {{ node.layer.name }}_min = {{ weights.minimum.data }};
+const {{ weights.minimum.dtype }} {{ node.layer.name }}_minimum = {{ weights.minimum.data }};
 const {{ weights.reciprocal_divisor.dtype }} {{ node.layer.name }}_reciprocal_divisor = {{ weights.reciprocal_divisor.data }};

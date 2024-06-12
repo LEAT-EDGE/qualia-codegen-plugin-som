@@ -18,6 +18,7 @@
 #define WEIGHTS_SCALE_FACTOR {{ node.q.weights_scale_factor }}
 #define INPUT_SCALE_FACTOR {{ node.innodes[0].q.output_scale_factor }}
 #define OUTPUT_SCALE_FACTOR {{ node.q.output_scale_factor }}
+#define OUTPUT_ROUND_MODE ROUND_MODE_{{ node.q.output_round_mode | upper }}
 #define TMP_SCALE_FACTOR {{ [node.q.weights_scale_factor, node.q.output_scale_factor] | max }}
 #define NUMBER_T {{ qtype2ctype(node.q.number_type, node.q.width) }}
 #define LONG_NUMBER_T {{ qtype2ctype(node.q.number_type, node.q.long_width) }}
@@ -33,10 +34,10 @@ static inline void {{ node.layer.name }}(
   LONG_NUMBER_T tmp;
 
   for (i = 0; i < INPUT_SAMPLES; i++) {
-    tmp = scale(NUMBER_T, input[i], INPUT_SCALE_FACTOR - TMP_SCALE_FACTOR) - scale(NUMBER_T, min_val, WEIGHTS_SCALE_FACTOR - TMP_SCALE_FACTOR);
+    tmp = scale(NUMBER_T, input[i], INPUT_SCALE_FACTOR - TMP_SCALE_FACTOR, OUTPUT_ROUND_MODE) - scale(NUMBER_T, min_val, WEIGHTS_SCALE_FACTOR - TMP_SCALE_FACTOR, OUTPUT_ROUND_MODE);
     tmp = tmp * reciprocal_divisor;
 
-    output[i] = clamp_to(NUMBER_T, scale(NUMBER_T, tmp, TMP_SCALE_FACTOR + WEIGHTS_SCALE_FACTOR - OUTPUT_SCALE_FACTOR));
+    output[i] = clamp_to(NUMBER_T, scale(NUMBER_T, tmp, TMP_SCALE_FACTOR + WEIGHTS_SCALE_FACTOR - OUTPUT_SCALE_FACTOR, OUTPUT_ROUND_MODE));
   }
 }
 
@@ -44,4 +45,5 @@ static inline void {{ node.layer.name }}(
 #undef WEIGHTS_SCALE_FACTOR
 #undef INPUT_SCALE_FACTOR
 #undef OUTPUT_SCALE_FACTOR
+#undef OUTPUT_ROUND_MODE
 #undef TMP_SCALE_FACTOR
