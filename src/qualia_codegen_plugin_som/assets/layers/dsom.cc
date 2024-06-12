@@ -13,6 +13,7 @@
 #endif
 //TODO: get rid of math.h for pow2_roots generation in fixed-point
 #include <math.h>
+#include <stdlib.h>
 
 #define INPUT_SAMPLES {{ node.input_shape[0][-1] }}
 #define NEURONS       {{ node.layer.neurons.shape[0] }}
@@ -25,6 +26,7 @@
 #define WEIGHTS_SCALE_FACTOR {{ node.q.weights_scale_factor }}
 #define INPUT_SCALE_FACTOR {{ node.innodes[0].q.output_scale_factor }}
 #define TMP_SCALE_FACTOR {{ [node.q.weights_scale_factor, node.innodes[0].q.output_scale_factor] | max }}
+#define OUTPUT_ROUND_MODE ROUND_MODE_{{ node.q.output_round_mode | upper }}
 // Scale factor to use for the exp computation, equals TMP_SCALE_FACTOR here
 {% set exp_scale_factor = [node.q.weights_scale_factor, node.innodes[0].q.output_scale_factor] | max -%}
 #define EXP_SCALE_FACTOR {{ exp_scale_factor }}
@@ -99,9 +101,9 @@ static inline LONG_NUMBER_T euclidean_distance_squared(
   
   // Compute squared distance to input
   for (i = 0; i < INPUT_SAMPLES; i++) {
-    diff = scale(NUMBER_T, input[i], INPUT_SCALE_FACTOR - TMP_SCALE_FACTOR) - scale(NUMBER_T, neuron[i], WEIGHTS_SCALE_FACTOR - TMP_SCALE_FACTOR);
+    diff = scale(NUMBER_T, input[i], INPUT_SCALE_FACTOR - TMP_SCALE_FACTOR, OUTPUT_ROUND_MODE) - scale(NUMBER_T, neuron[i], WEIGHTS_SCALE_FACTOR - TMP_SCALE_FACTOR, OUTPUT_ROUND_MODE);
     //Warning: overflow in fixed-point? Scale back to somewhat mitigate
-    dist += scale(NUMBER_T, diff * diff, TMP_SCALE_FACTOR);
+    dist += scale(NUMBER_T, diff * diff, TMP_SCALE_FACTOR, OUTPUT_ROUND_MODE);
   }
   return dist;
 }
@@ -155,11 +157,11 @@ static inline void {{ node.layer.name }}(
       distance_to_bmu = manhattan_distance(k, bmu);
 
 {% if node.q.number_type.__name__ == 'int' %}
-      LONG_NUMBER_T numerator = -scale(NUMBER_T, (LONG_NUMBER_T)(distance_to_bmu) * distance_to_bmu, -(2 * TMP_SCALE_FACTOR)); // Scale up before division
-      LONG_NUMBER_T denominator = scale(NUMBER_T, (LONG_NUMBER_T)(elasticity_squared) * distances_to_input_squared[bmu], WEIGHTS_SCALE_FACTOR);
+      LONG_NUMBER_T numerator = -scale(NUMBER_T, (LONG_NUMBER_T)(distance_to_bmu) * distance_to_bmu, -(2 * TMP_SCALE_FACTOR), OUTPUT_ROUND_MODE); // Scale up before division
+      LONG_NUMBER_T denominator = scale(NUMBER_T, (LONG_NUMBER_T)(elasticity_squared) * distances_to_input_squared[bmu], WEIGHTS_SCALE_FACTOR, OUTPUT_ROUND_MODE);
       neighbourhood = exp_fixed(numerator / denominator);
-      learning = scale(NUMBER_T, distances_to_input_squared[k] * neighbourhood, EXP_SCALE_FACTOR); // Scale neighbourhood back
-      learning = scale(NUMBER_T, learning * learning_rate, TMP_SCALE_FACTOR); // Scale distances_to_input_squared back, keep WEIGHTS_SCALE_FACTOR format
+      learning = scale(NUMBER_T, distances_to_input_squared[k] * neighbourhood, EXP_SCALE_FACTOR, OUTPUT_ROUND_MODE); // Scale neighbourhood back
+      learning = scale(NUMBER_T, learning * learning_rate, TMP_SCALE_FACTOR, OUTPUT_ROUND_MODE); // Scale distances_to_input_squared back, keep WEIGHTS_SCALE_FACTOR format
 {% else %}
       neighbourhood = exp(-(distance_to_bmu * distance_to_bmu) / (elasticity_squared * distances_to_input_squared[bmu]));
       learning = learning_rate * distances_to_input_squared[k] * neighbourhood;
@@ -168,8 +170,8 @@ static inline void {{ node.layer.name }}(
       for (i = 0; i < INPUT_SAMPLES; i++) {
         neurons[k][i] += clamp_to(NUMBER_T,
                             scale(NUMBER_T,
-                              learning * (scale(NUMBER_T, input[i], INPUT_SCALE_FACTOR - TMP_SCALE_FACTOR) - scale(NUMBER_T, neurons[k][i], WEIGHTS_SCALE_FACTOR - TMP_SCALE_FACTOR)),
-                              TMP_SCALE_FACTOR));
+                              learning * (scale(NUMBER_T, input[i], INPUT_SCALE_FACTOR - TMP_SCALE_FACTOR, OUTPUT_ROUND_MODE) - scale(NUMBER_T, neurons[k][i], WEIGHTS_SCALE_FACTOR - TMP_SCALE_FACTOR, OUTPUT_ROUND_MODE)),
+                              TMP_SCALE_FACTOR, OUTPUT_ROUND_MODE));
       }
     }
   }
@@ -188,5 +190,6 @@ static inline void {{ node.layer.name }}(
 #undef GRID_HEIGHT
 #undef WEIGHTS_SCALE_FACTOR
 #undef INPUT_SCALE_FACTOR
+#undef OUTPUT_ROUND_MODE
 #undef TMP_SCALE_FACTOR
 #undef EXP_SCALE_FACTOR
