@@ -1,14 +1,15 @@
-import logging
-from typing import Any, Callable, Optional, cast
+from __future__ import annotations
 
-import qualia_codegen_core
+import logging
+import sys
+from typing import Any, Callable, ClassVar, cast
+
 import numpy as np
-from qualia_codegen_core.graph import ModelGraph
-from qualia_codegen_core.graph.LayerNode import LayerNode
+import qualia_codegen_core.graph
 from qualia_codegen_core.graph.layers import TBaseLayer, TFlattenLayer
+from qualia_core.typing import TYPE_CHECKING
 from qualia_plugin_som.learningmodel.pytorch.layers import NormalizeMinMax, SOMLabelling
 from qualia_plugin_som.learningmodel.pytorch.layers.som import DSOM, KSOM
-from torch.nn import Module
 
 from .layers import (
     TDSOMLayer,
@@ -16,10 +17,20 @@ from .layers import (
     TSOMLabellingLayer,
 )
 
+if TYPE_CHECKING:
+    from qualia_codegen_core.graph import ModelGraph  # noqa: TCH002
+    from qualia_codegen_core.graph.LayerNode import LayerNode  # noqa: TCH002
+    from torch.nn import Module  # noqa: TCH002
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 logger = logging.getLogger(__name__)
 
 class TorchModelGraph(qualia_codegen_core.graph.TorchModelGraph):
-    MODULE_MAPPING: dict[type[Module], Callable[[Module, TBaseLayer], tuple[type[TBaseLayer], list[Any]]]] = {
+    MODULE_MAPPING: ClassVar[dict[type[Module], Callable[[Module, TBaseLayer], tuple[type[TBaseLayer], list[Any]]]]] = {
         # SOM layers
         NormalizeMinMax: lambda module, _: (TNormalizeMinMaxLayer,
                                          [cast(NormalizeMinMax, module).min.detach().numpy(),
@@ -40,10 +51,11 @@ class TorchModelGraph(qualia_codegen_core.graph.TorchModelGraph):
         SOMLabelling: lambda module, _: (TSOMLabellingLayer, [cast(SOMLabelling, module).labels.byte().detach().numpy()]),
     }
 
+    @override
     def convert(self,
-                custom_layers: Optional[dict[type[Module],
+                custom_layers: dict[type[Module],
                                              Callable[[Module, TBaseLayer],
-                                                      tuple[type[TBaseLayer], list[Any]]]]] = None) -> Optional[ModelGraph]:
+                                                      tuple[type[TBaseLayer], list[Any]]]] | None = None) -> ModelGraph | None:
         custom_layers = custom_layers if custom_layers is not None else {}
         custom_layers = {**TorchModelGraph.MODULE_MAPPING, **custom_layers}
 
@@ -69,7 +81,7 @@ class TorchModelGraph(qualia_codegen_core.graph.TorchModelGraph):
 
     def __reformat_som_weights_data(self) -> bool:
         """After Flatten comes SOM, must reshape weights and swap axes for channels_last used by C code."""
-        somnodes = [n for n in self.nodes if isinstance(n, TDSOMLayer)]
+        somnodes = [n for n in self.nodes if isinstance(n.layer, TDSOMLayer)]
         for somnode in somnodes:
             if len(somnode.innodes) != 1:
                 logger.error('SOM %s should only have one input layer, got: %s', somnode.layer.name, len(somnode.innodes))
@@ -77,7 +89,7 @@ class TorchModelGraph(qualia_codegen_core.graph.TorchModelGraph):
 
             innode = somnode.innodes[0]
             # Before SOM may come NormalizeMinMax, reformat SOM according to previous layer which should be Flatten
-            if isinstance(innode, TNormalizeMinMaxLayer):
+            if isinstance(innode.layer, TNormalizeMinMaxLayer):
                 if len(innode.innodes) != 1:
                     logger.error('NormalizeMinMax %s should only have one input layer, got: %s',
                                  innode.layer.name, len(innode.innodes))
@@ -85,7 +97,7 @@ class TorchModelGraph(qualia_codegen_core.graph.TorchModelGraph):
                 innode = innode.innodes[0]
 
             # No flatten before the SOM layer, may not need reformatting
-            if not isinstance(innode, TFlattenLayer):
+            if not isinstance(innode.layer, TFlattenLayer):
                 logger.info('No flatten before SOM layer %s, not reformatting SOM', somnode.layer.name)
                 continue
 

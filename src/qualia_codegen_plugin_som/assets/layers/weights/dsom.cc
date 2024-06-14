@@ -12,7 +12,7 @@
 #define INPUT_SAMPLES {{ node.input_shape[0][-1] }}
 #define NEURONS {{ node.layer.neurons.shape[0] }}
 
-#define ONLINE_LEARNING
+//#define ONLINE_LEARNING
 
 #ifndef ONLINE_LEARNING
 const
